@@ -5,7 +5,9 @@ import (
 	"musicbot/audio"
 	"musicbot/vc"
 	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -359,4 +361,87 @@ func (cmd *BotCommand) MoveInQueue(from, to int) {
 		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID,
 			"⚠️ Invalid move. Check positions and try again.")
 	}
+}
+
+// SearchResult holds metadata about a found YouTube track
+type SearchResult struct {
+	Title    string
+	Duration string
+	Uploader string
+	URL      string
+}
+
+// Search executes a YouTube search and lists the top 5 results
+func (cmd *BotCommand) Search(query string) {
+	searchCmd := exec.Command("yt-dlp", "ytsearch5:"+query, "--print", "%(title)s|%(duration_string)s|%(uploader)s|%(webpage_url)s")
+	output, err := searchCmd.Output()
+	if err != nil {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "❌ Search failed: "+err.Error())
+		return
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "❌ No results found.")
+		return
+	}
+
+	var results []SearchResult
+	for _, line := range lines {
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		results = append(results, SearchResult{
+			Title:    parts[0],
+			Duration: parts[1],
+			Uploader: parts[2],
+			URL:      parts[3],
+		})
+	}
+
+	msg := "**🔍 Search Results:**\n"
+	for i, r := range results {
+		msg += fmt.Sprintf("%d. [%s](%s) — %s by %s\n", i+1, r.Title, r.URL, r.Duration, r.Uploader)
+	}
+	msg += "\nReply with the number to select a track."
+
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
+
+	waitForSelection(cmd, results)
+}
+
+func waitForSelection(cmd *BotCommand, results []SearchResult) {
+	s := cmd.Session
+	userID := cmd.Message.Author.ID
+	channelID := cmd.Message.ChannelID
+
+	var remove func()
+	handler := func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.Author.ID != userID || m.ChannelID != channelID {
+			return
+		}
+
+		choice, err := strconv.Atoi(strings.TrimSpace(m.Content))
+		if err != nil || choice < 1 || choice > len(results) {
+			s.ChannelMessageSend(channelID, "❌ Invalid choice. Please enter a number from 1 to 5.")
+			return
+		}
+
+		selected := results[choice-1]
+		s.ChannelMessageSend(channelID, fmt.Sprintf("🎶 Selected: %s", selected.Title))
+
+		// Now safely remove the handler
+		remove()
+		cmd.Play(selected.URL)
+	}
+
+	// Set the remove function AFTER handler is defined
+	remove = s.AddHandler(handler)
+
+	// Optional: timeout cleanup after 30 seconds
+	go func() {
+		time.Sleep(30 * time.Second)
+		remove()
+	}()
 }

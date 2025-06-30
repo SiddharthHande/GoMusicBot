@@ -167,3 +167,21 @@ func (q *Queue) Insert(index int, track *Track) bool {
 	q.Tracks = append(q.Tracks[:index], append([]*Track{track}, q.Tracks[index:]...)...)
 	return true
 }
+
+// Move reorders a track from one position to another
+func (q *Queue) Move(from, to int) bool {
+	q.Lock()
+	defer q.Unlock()
+
+	if from < 0 || from >= len(q.Tracks) || to < 0 || to >= len(q.Tracks) {
+		return false
+	}
+
+	track := q.Tracks[from]
+	// Remove from old position
+	q.Tracks = append(q.Tracks[:from], q.Tracks[from+1:]...)
+	// Insert at new position
+	q.Tracks = append(q.Tracks[:to], append([]*Track{track}, q.Tracks[to:]...)...)
+
+	return true
+}

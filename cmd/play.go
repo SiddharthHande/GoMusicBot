@@ -347,3 +347,16 @@ func (cmd *BotCommand) InsertIntoQueue(index int, url string) {
 		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Invalid insert position.")
 	}
 }
+
+func (cmd *BotCommand) MoveInQueue(from, to int) {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	success := queue.Move(from-1, to-1)
+	if success {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID,
+			fmt.Sprintf("🔁 Moved track from position %d to %d.", from, to))
+	} else {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID,
+			"⚠️ Invalid move. Check positions and try again.")
+	}
+}

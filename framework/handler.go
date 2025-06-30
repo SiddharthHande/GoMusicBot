@@ -52,6 +52,8 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmd.Skip()
 
 	case strings.HasPrefix(m.Content, "!queue"):
+		args := strings.Fields(m.Content)
+
 		if len(args) == 2 {
 			switch args[1] {
 			case "clear":
@@ -76,6 +78,14 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 			url := args[3]
 			cmd.InsertIntoQueue(index, url)
+		} else if len(args) == 4 && args[1] == "move" {
+			from, err1 := strconv.Atoi(args[2])
+			to, err2 := strconv.Atoi(args[3])
+			if err1 != nil || err2 != nil {
+				cmd.Session.ChannelMessageSend(m.ChannelID, "⚠️ Invalid positions.")
+				return
+			}
+			cmd.MoveInQueue(from, to)
 		} else {
 			cmd.Queue()
 		}

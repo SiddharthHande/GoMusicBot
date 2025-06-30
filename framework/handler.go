@@ -13,20 +13,29 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	cmd := commands.NewBotCommand(s, m, voiceManager, queueManager, audioSessions)
+
 	switch {
 	case strings.HasPrefix(m.Content, "!ping"):
 		s.ChannelMessageSend(m.ChannelID, "Pong!")
+
 	case strings.HasPrefix(m.Content, "!help"):
 		helpMessage := "Available commands:\n" +
 			"`!ping` - Responds with Pong!\n" +
-			"`!help` - Displays this help message"
+			"`!help` - Displays this help message\n" +
+			"`!join` - Join your voice channel\n" +
+			"`!play <url>` - Play a YouTube video or playlist\n" +
+			"`!pause`, `!resume`, `!skip`, `!stop`, `!leave`\n" +
+			"`!queue`, `!nowplaying`\n" +
+			"`!loop one|all|off|toggle` - Set loop mode"
 		s.ChannelMessageSend(m.ChannelID, helpMessage)
+
 	case strings.HasPrefix(m.Content, "!info"):
-		infoMessage := "This is a simple music bot written in Go using the DiscordGo library.\n" +
-			"It can respond to basic commands like `!ping` and `!help`."
+		infoMessage := "🎵 This is a music bot written in Go using DiscordGo.\nSupports playback, queues, and loop modes."
 		s.ChannelMessageSend(m.ChannelID, infoMessage)
+
 	case strings.HasPrefix(m.Content, "!join"):
 		cmd.Join()
+
 	case strings.HasPrefix(m.Content, "!play"):
 		args := strings.Fields(cmd.Message.Content)
 		if len(args) < 2 {
@@ -34,28 +43,43 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		cmd.Play(args[1])
+
 	case strings.HasPrefix(m.Content, "!leave"):
 		cmd.Leave()
+
 	case strings.HasPrefix(m.Content, "!skip"):
 		cmd.Skip()
+
 	case strings.HasPrefix(m.Content, "!queue"):
 		cmd.Queue()
+
 	case strings.HasPrefix(m.Content, "!stop"):
 		cmd.Stop()
+
 	case strings.HasPrefix(m.Content, "!nowplaying"):
 		cmd.NowPlaying()
+
 	case strings.HasPrefix(m.Content, "!pause"):
 		cmd.Pause()
+
 	case strings.HasPrefix(m.Content, "!resume"):
 		cmd.Resume()
+
 	case strings.HasPrefix(m.Content, "!loop"):
-		cmd.LoopTrack(true)
-	case strings.HasPrefix(m.Content, "!unloop"):
-		cmd.LoopTrack(false)
-	case strings.HasPrefix(m.Content, "!loopqueue"):
-		cmd.LoopQueue(true)
-	case strings.HasPrefix(m.Content, "!unloopqueue"):
-		cmd.LoopQueue(false)
+		args := strings.Fields(cmd.Message.Content)
+		if len(args) < 2 {
+			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Usage: !loop one | all | off | toggle")
+			return
+		}
+		switch args[1] {
+		case "one", "all", "off":
+			cmd.SetLoopMode(args[1])
+		case "toggle":
+			cmd.ToggleLoopMode()
+		default:
+			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Invalid loop mode. Use: `one`, `all`, `off`, or `toggle`.")
+		}
+
 	default:
 		s.ChannelMessageSend(m.ChannelID, "Unknown command. Type `!help` for available commands.")
 	}

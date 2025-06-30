@@ -81,7 +81,7 @@ func (cmd *BotCommand) Leave() {
 	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "👋 Disconnected from voice channel.")
 }
 
-func (cmd *BotCommand) Play(youtubeURL string) {
+func (cmd *BotCommand) Play(input string) {
 	guildID := cmd.Message.GuildID
 	userChannelID := cmd.getUserVoiceChannelID()
 
@@ -102,24 +102,32 @@ func (cmd *BotCommand) Play(youtubeURL string) {
 
 	queue := cmd.QueueManager.Get(guildID)
 
-	// Fetch metadata using yt-dlp --print
-	cmdYTDLP := exec.Command("yt-dlp", "--print", "%(title)s|%(duration_string)s|%(uploader)s", youtubeURL)
-	output, err := cmdYTDLP.Output()
-	title, duration, uploader := youtubeURL, "", ""
-	if err == nil {
-		parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
-		if len(parts) == 3 {
-			title = parts[0]
-			duration = parts[1]
-			uploader = parts[2]
+	if strings.Contains(input, "playlist?") {
+		tracks, err := audio.ExtractPlaylistTracks(input)
+		if err != nil || len(tracks) == 0 {
+			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Failed to extract playlist.")
+			return
 		}
+		queue.EnqueueMultiple(tracks)
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🎶 Enqueued %d tracks from playlist.", len(tracks)))
+	} else {
+		title, duration, uploader := input, "", ""
+		cmdYTDLP := exec.Command("yt-dlp", "--print", "%(title)s|%(duration_string)s|%(uploader)s", input)
+		output, err := cmdYTDLP.Output()
+		if err == nil {
+			parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
+			if len(parts) == 3 {
+				title, duration, uploader = parts[0], parts[1], parts[2]
+			}
+		}
+		queue.Enqueue(&audio.Track{
+			URL:      input,
+			Title:    title,
+			Duration: duration,
+			Uploader: uploader,
+		})
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "✅ Added to queue.")
 	}
-	queue.Enqueue(&audio.Track{
-		URL:      youtubeURL,
-		Title:    title,
-		Duration: duration,
-		Uploader: uploader,
-	})
 
 	if _, exists := cmd.AudioSessions.Get(guildID); !exists {
 		cmd.AudioSessions.Set(guildID, &audio.GuildAudioState{Conn: audio.NewConnection(vc)})
@@ -129,7 +137,6 @@ func (cmd *BotCommand) Play(youtubeURL string) {
 		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "✅ Added to queue.")
 		return
 	}
-
 	go cmd.startQueuePlayback(guildID, vc, queue)
 }
 
@@ -143,32 +150,17 @@ func (cmd *BotCommand) startQueuePlayback(guildID string, vc *discordgo.VoiceCon
 	}()
 
 	for {
-		var track *audio.Track
-
-		// Loop current track if enabled
-		if queue.LoopTrack && queue.CurrentTrack != nil {
-			track = queue.CurrentTrack
-		} else {
-			track = queue.Dequeue()
-			if track == nil {
-				break
-			}
-			queue.CurrentTrack = track
+		track := queue.Dequeue()
+		if track == nil {
+			break
 		}
-
+		queue.CurrentTrack = track
 		state := &audio.GuildAudioState{Conn: audio.NewConnection(vc)}
 		cmd.AudioSessions.Set(guildID, state)
-		audioConn := state.Conn
-
-		err := audioConn.Play(track.URL, &state.Paused, &state.Mutex)
+		err := state.Conn.Play(track.URL, &state.Paused, &state.Mutex)
 		if err != nil {
 			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Error playing track: "+err.Error())
 			continue
-		}
-
-		// If loop queue is enabled and not looping a single track, re-add the track to the end
-		if queue.LoopQueue && !queue.LoopTrack {
-			queue.Enqueue(track)
 		}
 	}
 }
@@ -275,24 +267,28 @@ func (cmd *BotCommand) Resume() {
 	}
 }
 
-func (cmd *BotCommand) LoopTrack(enable bool) {
+func (cmd *BotCommand) SetLoopMode(mode string) {
 	guildID := cmd.Message.GuildID
 	queue := cmd.QueueManager.Get(guildID)
-	queue.LoopTrack = enable
-	msg := "🔁 Looping current track enabled."
-	if !enable {
-		msg = "🔁 Looping current track disabled."
+
+	var loop audio.LoopMode
+	switch mode {
+	case "one":
+		loop = audio.LoopOne
+	case "all":
+		loop = audio.LoopAll
+	default:
+		loop = audio.LoopOff
 	}
-	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
+
+	queue.SetLoopMode(loop)
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🔁 Loop mode set to: %s", loop.String()))
 }
 
-func (cmd *BotCommand) LoopQueue(enable bool) {
+func (cmd *BotCommand) ToggleLoopMode() {
 	guildID := cmd.Message.GuildID
 	queue := cmd.QueueManager.Get(guildID)
-	queue.LoopQueue = enable
-	msg := "🔂 Looping queue enabled."
-	if !enable {
-		msg = "🔂 Looping queue disabled."
-	}
-	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
+
+	newMode := queue.ToggleLoopMode()
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🔄 Toggled loop mode: %s", newMode.String()))
 }

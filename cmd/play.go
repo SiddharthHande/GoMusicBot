@@ -292,3 +292,58 @@ func (cmd *BotCommand) ToggleLoopMode() {
 	newMode := queue.ToggleLoopMode()
 	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🔄 Toggled loop mode: %s", newMode.String()))
 }
+
+func (cmd *BotCommand) ClearQueue() {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	queue.Clear()
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "🧹 Cleared the queue.")
+}
+
+func (cmd *BotCommand) ShuffleQueue() {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	queue.Shuffle()
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "🔀 Queue shuffled.")
+}
+
+func (cmd *BotCommand) RemoveFromQueue(index int) {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	ok := queue.Remove(index - 1)
+	if ok {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("❌ Removed track %d from queue.", index))
+	} else {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Invalid index.")
+	}
+}
+
+func (cmd *BotCommand) InsertIntoQueue(index int, url string) {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+
+	// Fetch metadata
+	cmdYTDLP := exec.Command("yt-dlp", "--print", "%(title)s|%(duration_string)s|%(uploader)s", url)
+	output, err := cmdYTDLP.Output()
+	title, duration, uploader := url, "", ""
+	if err == nil {
+		parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
+		if len(parts) == 3 {
+			title = parts[0]
+			duration = parts[1]
+			uploader = parts[2]
+		}
+	}
+	track := &audio.Track{
+		URL:      url,
+		Title:    title,
+		Duration: duration,
+		Uploader: uploader,
+	}
+	ok := queue.Insert(index-1, track)
+	if ok {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("➕ Inserted at position %d: %s", index, title))
+	} else {
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Invalid insert position.")
+	}
+}

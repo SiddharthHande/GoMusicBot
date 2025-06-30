@@ -2,6 +2,7 @@ package framework
 
 import (
 	commands "musicbot/cmd"
+	"strconv"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,6 +14,7 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	cmd := commands.NewBotCommand(s, m, voiceManager, queueManager, audioSessions)
+	args := strings.Fields(m.Content)
 
 	switch {
 	case strings.HasPrefix(m.Content, "!ping"):
@@ -26,20 +28,19 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			"`!play <url>` - Play a YouTube video or playlist\n" +
 			"`!pause`, `!resume`, `!skip`, `!stop`, `!leave`\n" +
 			"`!queue`, `!nowplaying`\n" +
+			"`!queue clear` - Clear the queue\n" +
 			"`!loop one|all|off|toggle` - Set loop mode"
 		s.ChannelMessageSend(m.ChannelID, helpMessage)
 
 	case strings.HasPrefix(m.Content, "!info"):
-		infoMessage := "🎵 This is a music bot written in Go using DiscordGo.\nSupports playback, queues, and loop modes."
-		s.ChannelMessageSend(m.ChannelID, infoMessage)
+		s.ChannelMessageSend(m.ChannelID, "🎵 This is a music bot written in Go using DiscordGo.\nSupports playback, queues, and loop modes.")
 
 	case strings.HasPrefix(m.Content, "!join"):
 		cmd.Join()
 
 	case strings.HasPrefix(m.Content, "!play"):
-		args := strings.Fields(cmd.Message.Content)
 		if len(args) < 2 {
-			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Usage: !play <youtube_url>")
+			s.ChannelMessageSend(m.ChannelID, "Usage: !play <youtube_url>")
 			return
 		}
 		cmd.Play(args[1])
@@ -51,7 +52,33 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmd.Skip()
 
 	case strings.HasPrefix(m.Content, "!queue"):
-		cmd.Queue()
+		if len(args) == 2 {
+			switch args[1] {
+			case "clear":
+				cmd.ClearQueue()
+			case "shuffle":
+				cmd.ShuffleQueue()
+			default:
+				cmd.Queue()
+			}
+		} else if len(args) == 3 && args[1] == "remove" {
+			index, err := strconv.Atoi(args[2])
+			if err != nil {
+				cmd.Session.ChannelMessageSend(m.ChannelID, "⚠️ Invalid index.")
+				return
+			}
+			cmd.RemoveFromQueue(index)
+		} else if len(args) >= 4 && args[1] == "insert" {
+			index, err := strconv.Atoi(args[2])
+			if err != nil {
+				cmd.Session.ChannelMessageSend(m.ChannelID, "⚠️ Invalid index.")
+				return
+			}
+			url := args[3]
+			cmd.InsertIntoQueue(index, url)
+		} else {
+			cmd.Queue()
+		}
 
 	case strings.HasPrefix(m.Content, "!stop"):
 		cmd.Stop()
@@ -66,9 +93,8 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmd.Resume()
 
 	case strings.HasPrefix(m.Content, "!loop"):
-		args := strings.Fields(cmd.Message.Content)
 		if len(args) < 2 {
-			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Usage: !loop one | all | off | toggle")
+			s.ChannelMessageSend(m.ChannelID, "Usage: !loop one | all | off | toggle")
 			return
 		}
 		switch args[1] {
@@ -77,7 +103,7 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		case "toggle":
 			cmd.ToggleLoopMode()
 		default:
-			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Invalid loop mode. Use: `one`, `all`, `off`, or `toggle`.")
+			s.ChannelMessageSend(m.ChannelID, "Invalid loop mode. Use: `one`, `all`, `off`, or `toggle`.")
 		}
 
 	default:

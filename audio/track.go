@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"math/rand"
 	"os/exec"
 	"strings"
 	"sync"
@@ -134,4 +135,35 @@ func ExtractPlaylistTracks(playlistURL string) ([]*Track, error) {
 		})
 	}
 	return tracks, nil
+}
+
+// Shuffle randomly shuffles the queue (excluding CurrentTrack)
+func (q *Queue) Shuffle() {
+	q.Lock()
+	defer q.Unlock()
+	rand.Shuffle(len(q.Tracks), func(i, j int) {
+		q.Tracks[i], q.Tracks[j] = q.Tracks[j], q.Tracks[i]
+	})
+}
+
+// Remove deletes a track by 0-based index
+func (q *Queue) Remove(index int) bool {
+	q.Lock()
+	defer q.Unlock()
+	if index < 0 || index >= len(q.Tracks) {
+		return false
+	}
+	q.Tracks = append(q.Tracks[:index], q.Tracks[index+1:]...)
+	return true
+}
+
+// Insert adds a track at a specific 0-based index
+func (q *Queue) Insert(index int, track *Track) bool {
+	q.Lock()
+	defer q.Unlock()
+	if index < 0 || index > len(q.Tracks) {
+		return false
+	}
+	q.Tracks = append(q.Tracks[:index], append([]*Track{track}, q.Tracks[index:]...)...)
+	return true
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"musicbot/audio"
 	"musicbot/vc"
+	"os/exec"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -99,7 +101,25 @@ func (cmd *BotCommand) Play(youtubeURL string) {
 	}
 
 	queue := cmd.QueueManager.Get(guildID)
-	queue.Enqueue(&audio.Track{URL: youtubeURL})
+
+	// Fetch metadata using yt-dlp --print
+	cmdYTDLP := exec.Command("yt-dlp", "--print", "%(title)s|%(duration_string)s|%(uploader)s", youtubeURL)
+	output, err := cmdYTDLP.Output()
+	title, duration, uploader := youtubeURL, "", ""
+	if err == nil {
+		parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
+		if len(parts) == 3 {
+			title = parts[0]
+			duration = parts[1]
+			uploader = parts[2]
+		}
+	}
+	queue.Enqueue(&audio.Track{
+		URL:      youtubeURL,
+		Title:    title,
+		Duration: duration,
+		Uploader: uploader,
+	})
 
 	if _, exists := cmd.AudioSessions.Get(guildID); !exists {
 		cmd.AudioSessions.Set(guildID, &audio.GuildAudioState{Conn: audio.NewConnection(vc)})
@@ -123,11 +143,18 @@ func (cmd *BotCommand) startQueuePlayback(guildID string, vc *discordgo.VoiceCon
 	}()
 
 	for {
-		track := queue.Dequeue()
-		if track == nil {
-			break
+		var track *audio.Track
+
+		// Loop current track if enabled
+		if queue.LoopTrack && queue.CurrentTrack != nil {
+			track = queue.CurrentTrack
+		} else {
+			track = queue.Dequeue()
+			if track == nil {
+				break
+			}
+			queue.CurrentTrack = track
 		}
-		queue.CurrentTrack = track
 
 		state := &audio.GuildAudioState{Conn: audio.NewConnection(vc)}
 		cmd.AudioSessions.Set(guildID, state)
@@ -137,6 +164,11 @@ func (cmd *BotCommand) startQueuePlayback(guildID string, vc *discordgo.VoiceCon
 		if err != nil {
 			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Error playing track: "+err.Error())
 			continue
+		}
+
+		// If loop queue is enabled and not looping a single track, re-add the track to the end
+		if queue.LoopQueue && !queue.LoopTrack {
+			queue.Enqueue(track)
 		}
 	}
 }
@@ -202,7 +234,9 @@ func (cmd *BotCommand) NowPlaying() {
 	queue := cmd.QueueManager.Get(guildID)
 
 	if queue.CurrentTrack != nil {
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🎶 Now Playing: %s", queue.CurrentTrack.URL))
+		track := queue.CurrentTrack
+		msg := fmt.Sprintf("🎶 Now Playing: %s\n⏱️ Duration: %s\n👤 Uploader: %s", track.Title, track.Duration, track.Uploader)
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
 		return
 	}
 
@@ -239,4 +273,26 @@ func (cmd *BotCommand) Resume() {
 	} else {
 		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "❌ Nothing is playing.")
 	}
+}
+
+func (cmd *BotCommand) LoopTrack(enable bool) {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	queue.LoopTrack = enable
+	msg := "🔁 Looping current track enabled."
+	if !enable {
+		msg = "🔁 Looping current track disabled."
+	}
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
+}
+
+func (cmd *BotCommand) LoopQueue(enable bool) {
+	guildID := cmd.Message.GuildID
+	queue := cmd.QueueManager.Get(guildID)
+	queue.LoopQueue = enable
+	msg := "🔂 Looping queue enabled."
+	if !enable {
+		msg = "🔂 Looping queue disabled."
+	}
+	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
 }

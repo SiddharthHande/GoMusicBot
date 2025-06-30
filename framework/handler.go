@@ -48,6 +48,14 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		cmd.Pause()
 	case strings.HasPrefix(m.Content, "!resume"):
 		cmd.Resume()
+	case strings.HasPrefix(m.Content, "!loop"):
+		cmd.LoopTrack(true)
+	case strings.HasPrefix(m.Content, "!unloop"):
+		cmd.LoopTrack(false)
+	case strings.HasPrefix(m.Content, "!loopqueue"):
+		cmd.LoopQueue(true)
+	case strings.HasPrefix(m.Content, "!unloopqueue"):
+		cmd.LoopQueue(false)
 	default:
 		s.ChannelMessageSend(m.ChannelID, "Unknown command. Type `!help` for available commands.")
 	}

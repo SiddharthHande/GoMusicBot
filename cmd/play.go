@@ -88,7 +88,7 @@ func (cmd *BotCommand) Play(input string) {
 	userChannelID := cmd.getUserVoiceChannelID()
 
 	if userChannelID == "" {
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "You must be in a voice channel.")
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "🔊 You must be in a voice channel.")
 		return
 	}
 
@@ -97,13 +97,14 @@ func (cmd *BotCommand) Play(input string) {
 		cmd.Join()
 		vc, ok = cmd.VoiceManager.Get(guildID)
 		if !ok {
-			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "Failed to get voice connection.")
+			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "❌ Failed to join your voice channel.")
 			return
 		}
 	}
 
 	queue := cmd.QueueManager.Get(guildID)
 
+	// Handle playlist
 	if strings.Contains(input, "playlist?") {
 		tracks, err := audio.ExtractPlaylistTracks(input)
 		if err != nil || len(tracks) == 0 {
@@ -111,24 +112,22 @@ func (cmd *BotCommand) Play(input string) {
 			return
 		}
 		queue.EnqueueMultiple(tracks)
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("🎶 Enqueued %d tracks from playlist.", len(tracks)))
-	} else {
-		title, duration, uploader := input, "", ""
-		cmdYTDLP := exec.Command("yt-dlp", "--print", "%(title)s|%(duration_string)s|%(uploader)s", input)
-		output, err := cmdYTDLP.Output()
-		if err == nil {
-			parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
-			if len(parts) == 3 {
-				title, duration, uploader = parts[0], parts[1], parts[2]
-			}
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, fmt.Sprintf("📜 Enqueued %d tracks from playlist.", len(tracks)))
+
+		// Extract metadata for each track in background
+		for _, t := range tracks {
+			go extractMetadata(t)
 		}
-		queue.Enqueue(&audio.Track{
+	} else {
+		track := &audio.Track{
 			URL:      input,
-			Title:    title,
-			Duration: duration,
-			Uploader: uploader,
-		})
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "✅ Added to queue.")
+			Title:    input,
+			Duration: "",
+			Uploader: "",
+		}
+		queue.Enqueue(track)
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "🎶 Added to queue.")
+		go extractMetadata(track)
 	}
 
 	if _, exists := cmd.AudioSessions.Get(guildID); !exists {
@@ -136,9 +135,9 @@ func (cmd *BotCommand) Play(input string) {
 	}
 
 	if queue.IsPlaying {
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "✅ Added to queue.")
 		return
 	}
+
 	go cmd.startQueuePlayback(guildID, vc, queue)
 }
 
@@ -148,7 +147,7 @@ func (cmd *BotCommand) startQueuePlayback(guildID string, vc *discordgo.VoiceCon
 		queue.IsPlaying = false
 		queue.CurrentTrack = nil
 		_ = cmd.VoiceManager.Leave(guildID)
-		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "👋 Finished playback. Left voice channel.")
+		cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "👋 Finished playback. Left the voice channel.")
 	}()
 
 	for {
@@ -156,9 +155,13 @@ func (cmd *BotCommand) startQueuePlayback(guildID string, vc *discordgo.VoiceCon
 		if track == nil {
 			break
 		}
+
 		queue.CurrentTrack = track
+		go cmd.NowPlaying()
+
 		state := &audio.GuildAudioState{Conn: audio.NewConnection(vc)}
 		cmd.AudioSessions.Set(guildID, state)
+
 		err := state.Conn.Play(track.URL, &state.Paused, &state.Mutex)
 		if err != nil {
 			cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, "⚠️ Error playing track: "+err.Error())
@@ -408,7 +411,7 @@ func (cmd *BotCommand) Search(query string) {
 
 	cmd.Session.ChannelMessageSend(cmd.Message.ChannelID, msg)
 
-	waitForSelection(cmd, results)
+	go waitForSelection(cmd, results)
 }
 
 func waitForSelection(cmd *BotCommand, results []SearchResult) {

@@ -104,7 +104,8 @@ func (connection *Connection) Play(youtubeURL string, paused *bool, pauseMutex *
 	connection.stopRunning = false
 	connection.lock.Unlock()
 
-	ytdlp := exec.Command("yt-dlp", "-f", "bestaudio", "-o", "-", youtubeURL)
+	// ytdlp := exec.Command("yt-dlp", "-f", "bestaudio", "-o", "-", youtubeURL)
+	ytdlp := exec.Command("yt-dlp", "-f", "bestaudio[ext=m4a]", "--no-playlist", "-o", "-", youtubeURL)
 	ffmpeg := exec.Command("ffmpeg",
 		"-re",
 		"-i", "pipe:0",

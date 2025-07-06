@@ -16,50 +16,50 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	cmd := commands.NewBotCommand(s, m, voiceManager, queueManager, audioSessions)
 	args := strings.Fields(m.Content)
 
-	if len(args) == 0 || !strings.HasPrefix(args[0], "!") {
+	if len(args) == 0 || !strings.HasPrefix(args[0], ">") {
 		return
 	}
 
 	switch args[0] {
-	case "!ping":
+	case ">ping":
 		s.ChannelMessageSend(m.ChannelID, "Pong!")
 
-	case "!help":
+	case ">help":
 		s.ChannelMessageSend(m.ChannelID,
 			"Available commands:\n"+
-				"`!ping` - Responds with Pong!\n"+
-				"`!help` - Displays this help message\n"+
-				"`!join`, `!leave` - Voice connection\n"+
-				"`!play <url>` - Play a YouTube video or playlist\n"+
-				"`!pause`, `!resume`, `!skip`, `!stop`\n"+
-				"`!queue` - Show queue\n"+
-				"`!queue clear|shuffle` - Manage queue\n"+
-				"`!queue insert <index> <url>`\n"+
-				"`!queue remove <index>`\n"+
-				"`!queue move <from> <to>`\n"+
-				"`!loop one|all|off|toggle` - Set loop mode\n"+
-				"`!nowplaying`, `!search <query>`")
+				"`>ping` - Responds with Pong>\n"+
+				"`>help` - Displays this help message\n"+
+				"`>join`, `>leave` - Voice connection\n"+
+				"`>play <url>` - Play a YouTube video or playlist\n"+
+				"`>pause`, `>resume`, `>skip`, `>stop`\n"+
+				"`>queue` - Show queue\n"+
+				"`>queue clear|shuffle` - Manage queue\n"+
+				"`>queue insert <index> <url>`\n"+
+				"`>queue remove <index>`\n"+
+				"`>queue move <from> <to>`\n"+
+				"`>loop one|all|off|toggle` - Set loop mode\n"+
+				"`>nowplaying`, `>search <query>`")
 
-	case "!info":
+	case ">info":
 		s.ChannelMessageSend(m.ChannelID, "🎵 This is a music bot written in Go using DiscordGo.\nSupports playback, queues, and loop modes.")
 
-	case "!join":
+	case ">join":
 		cmd.Join()
 
-	case "!play":
+	case ">play":
 		if len(args) < 2 {
-			s.ChannelMessageSend(m.ChannelID, "Usage: `!play <youtube_url>`")
+			s.ChannelMessageSend(m.ChannelID, "Usage: `>play <youtube_url>`")
 			return
 		}
 		cmd.Play(args[1])
 
-	case "!leave":
+	case ">leave":
 		cmd.Leave()
 
-	case "!skip":
+	case ">skip":
 		cmd.Skip()
 
-	case "!queue":
+	case ">queue":
 		switch {
 		case len(args) == 2 && args[1] == "clear":
 			cmd.ClearQueue()
@@ -92,21 +92,21 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			cmd.Queue()
 		}
 
-	case "!stop":
+	case ">stop":
 		cmd.Stop()
 
-	case "!nowplaying":
+	case ">nowplaying":
 		cmd.NowPlaying()
 
-	case "!pause":
+	case ">pause":
 		cmd.Pause()
 
-	case "!resume":
+	case ">resume":
 		cmd.Resume()
 
-	case "!loop":
+	case ">loop":
 		if len(args) < 2 {
-			s.ChannelMessageSend(m.ChannelID, "Usage: `!loop one | all | off | toggle`")
+			s.ChannelMessageSend(m.ChannelID, "Usage: `>loop one | all | off | toggle`")
 			return
 		}
 		switch args[1] {
@@ -118,15 +118,15 @@ func onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			s.ChannelMessageSend(m.ChannelID, "Invalid loop mode. Use: `one`, `all`, `off`, or `toggle`.")
 		}
 
-	case "!search":
+	case ">search":
 		query := strings.TrimSpace(strings.Join(args[1:], " "))
 		if query == "" {
-			s.ChannelMessageSend(m.ChannelID, "Usage: `!search <query>`")
+			s.ChannelMessageSend(m.ChannelID, "Usage: `>search <query>`")
 			return
 		}
 		go cmd.Search(query)
 
 	default:
-		s.ChannelMessageSend(m.ChannelID, "Unknown command. Type `!help` for available commands.")
+		s.ChannelMessageSend(m.ChannelID, "Unknown command. Type `>help` for available commands.")
 	}
 }
